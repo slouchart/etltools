@@ -39,8 +39,8 @@ def compose(*funcs):
 
 
 def filtertruefalse(predicate, iterable):
-    return filter(predicate, iterable), \
-           filterfalse(predicate, iterable)
+    src_1, src_2 = replicate(iterable)
+    return filter(predicate, src_1), filterfalse(predicate, src_2)
 
 
 def groupby(key, iterable):
