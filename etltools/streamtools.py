@@ -128,7 +128,7 @@ def pipeline(*funcs):
     return compose_(*reversed(funcs))
 
 
-def pipe(data, *steps):
+def pipe_data_through(data, *steps):
     return pipe_(data, *steps)
 
 
@@ -204,7 +204,7 @@ def router(predicates, iterable, strict=False):
     )
 
 
-class _splitted:
+class _splitter:
     """A chimera class, an iterator with the interface of a generator"""
     def __init__(self, callback):
         self._callback = callback
@@ -256,19 +256,19 @@ class split(object):
         assert callable(self._splitter_func)
 
         if expected_length > 0:
-            self.nb_splitted = expected_length
+            nb_splitter = expected_length
         else:
             try:
                 first = next(self._it)
-                self.nb_splitted = len(self._splitter_func(first))
+                nb_splitter = len(self._splitter_func(first))
                 self._it = chain([first], self._it)  # reset the main iterator
             except StopIteration:
-                self.nb_splitted = 0
+                nb_splitter = 0
 
-        if self.nb_splitted:
+        if nb_splitter:
             self._iterators = tuple(
-                _splitted(self)
-                for _ in range(self.nb_splitted)
+                _splitter(self)
+                for _ in range(nb_splitter)
             )
         else:
             self._iterators = tuple()
@@ -280,11 +280,11 @@ class split(object):
         try:
             item = next(self._it)
             try:
-                splitted = self._splitter_func(item)
+                split_item = self._splitter_func(item)
             except Exception:
                 raise RuntimeError("Exception in the splitting function")
 
-            for index, t in enumerate(splitted):
+            for index, t in enumerate(split_item):
                 try:
                     self._iterators[index].send(t)
                 except IndexError:
@@ -292,7 +292,7 @@ class split(object):
                         "Encountered a tuple with length "
                         "exceeding the number of output "
                         "iterators: " +
-                        f"{len(splitted)} > "
+                        f"{len(split_item)} > "
                         f"{len(self._iterators)}"
                     )
 

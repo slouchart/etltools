@@ -1,7 +1,7 @@
 from unittest import TestCase, main as run_tests
 
 from itertools import repeat
-from etltools import compose, mcompose, pipeline, pipe, xargs
+from etltools import compose, mcompose, pipeline, pipe_data_through, xargs
 
 
 def f1(x):
@@ -40,7 +40,7 @@ class TestMCompose(TestCase):
 class TestPipeline(TestCase):
 
     def test_1(self):
-        r = pipe(1, f1, f2, f1, f2)
+        r = pipe_data_through(1, f1, f2, f1, f2)
         self.assertTrue(r == 64)
 
     def test_2(self):

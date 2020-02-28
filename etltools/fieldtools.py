@@ -1,4 +1,4 @@
-from toolz import keyfilter, itemmap, curry
+from toolz import keyfilter, itemmap, curry, compose as compose_
 from itertools import zip_longest
 
 

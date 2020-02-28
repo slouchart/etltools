@@ -17,7 +17,7 @@ from .streamtools import (
     mcompose,
     pipable,
     pipeline,
-    pipe,
+    pipe_data_through,
     call_next_starred,
     xargs,
 )
