@@ -1,3 +1,5 @@
+import collections
+
 from itertools import starmap, tee as replicate_, filterfalse, zip_longest
 from itertools import chain
 
@@ -202,81 +204,107 @@ def router(predicates, iterable, strict=False):
     )
 
 
+class _splitted:
+    """A chimera class, an iterator with the interface of a generator"""
+    def __init__(self, callback):
+        self._callback = callback
+        self._buffer = collections.deque()
+        self._should_stop = False
+        self._exception = StopIteration
+
+    def send(self, item):
+        self._buffer.append(item)
+
+    def throw(self, exc):
+        self._should_stop = True
+        self._exception = exc
+
+    def __iter__(self):
+        return self
+
+    def __call__(self, *args, **kwargs):
+        for item in iter(self):
+            yield item
+
+    def __next__(self):
+        if not self._should_stop:
+            if len(self._buffer) == 0:
+                self._callback(self)  # draw a new value
+
+            if len(self._buffer) == 0:  # nothing was sent
+                self._should_stop = True
+
+            if len(self._buffer) > 0:  # emit the first received element
+                return self._buffer.popleft()
+
+        if self._should_stop:
+            raise self._exception
+
+
 class split(object):
 
-    class _splitted:
-        def __init__(self, parent, index):
-            self.index = index
-            self._parent = parent
-            self._buffer = []
-            self._should_stop = False
-
-        def send(self, item):
-            self._buffer.append(item)
-
-        def throw(self, exc):
-            if exc == StopIteration:
-                self._should_stop = True
-            else:
-                raise exc
-
-        def __iter__(self):
-            return self
-
-        def __next__(self):
-            if not self._should_stop:
-                if len(self._buffer) == 0:
-                    self._parent.next(self)  # draw a new value
-
-                if len(self._buffer) == 0:  # nothing was sent
-                    self._should_stop = True
-
-                if len(self._buffer) > 0:  # emit the first received element
-                    return self._buffer.pop(0)
-
-            if self._should_stop:
-                raise StopIteration
-
-    def __new__(cls, func, tuples):
+    def __new__(cls, func, tuples, expected_length=-1):
         new_instance = super().__new__(cls)
-        new_instance.__init__(func, tuples)
-        return new_instance._iterators
+        new_instance.__init__(func, tuples, expected_length=expected_length)
+        return new_instance._iterators  # func-like class :wink:
 
-    def __init__(self, func, tuples):
+    def __init__(self, func, tuples, expected_length=-1):
 
         self._splitter_func = func
         self._it = iter(tuples)
 
         assert callable(self._splitter_func)
 
-        try:
-            first = next(self._it)
-            self.nb_splitted = len(self._splitter_func(first))
-            self._it = chain([first], self._it)  # reset the main iterator
-        except StopIteration:
-            self.nb_splitted = 0
+        if expected_length > 0:
+            self.nb_splitted = expected_length
+        else:
+            try:
+                first = next(self._it)
+                self.nb_splitted = len(self._splitter_func(first))
+                self._it = chain([first], self._it)  # reset the main iterator
+            except StopIteration:
+                self.nb_splitted = 0
 
         if self.nb_splitted:
             self._iterators = tuple(
-                self._splitted(self, index)
-                for index in range(self.nb_splitted)
+                _splitted(self)
+                for _ in range(self.nb_splitted)
             )
         else:
             self._iterators = tuple()
 
-    def next(self, requester):
+    def __len__(self):  # pragma: no cover
+        return len(self._iterators)
+
+    def __call__(self, requester):
         try:
             item = next(self._it)
-            splitted = self._splitter_func(item)
+            try:
+                splitted = self._splitter_func(item)
+            except Exception:
+                raise RuntimeError("Exception in the splitting function")
 
-            for index, item in enumerate(splitted):
-                if index != requester.index:
-                    self._iterators[index].send(item)
-                else:
-                    requester.send(item)
+            for index, t in enumerate(splitted):
+                try:
+                    self._iterators[index].send(t)
+                except IndexError:
+                    raise ValueError(
+                        "Encountered a tuple with length "
+                        "exceeding the number of output "
+                        "iterators: " +
+                        f"{len(splitted)} > "
+                        f"{len(self._iterators)}"
+                    )
 
         except StopIteration:
             requester.throw(StopIteration)
+        except (RuntimeError, ValueError) as e:
+            self._throw_to_all(e)
+
+    def _throw_to_all(self, exc):
+        # signal all iterators
+        for it in self._iterators:
+            it.throw(exc)
 
 
 class stream_converter:
@@ -315,7 +343,7 @@ class stream_converter:
             assert (from_, to_, key_type) not in cls._dispatcher, \
                 f"A dispatch entry already exists for " \
                 f"({from_.__name__}, {to_.__name__}, " \
-                f"{key_type.__name__ if key_type is not None else str(key_type)})"
+                f"{key_type.__name__ if key_type is not None else str(key_type)})"  # noqa: E501
             cls._dispatcher[(from_, to_, key_type)] = wrapper
             return wrapper
 
@@ -330,7 +358,7 @@ def _identity():
 
 
 @stream_converter.dispatch(tuple, dict, key_type=str)
-def _convert_tuple_to_dict(keys):
+def _convert_tuple_to_dict_with_keys(keys):
     if keys and len(keys):
         return lambda d: dict(zip(keys, d))
     else:
