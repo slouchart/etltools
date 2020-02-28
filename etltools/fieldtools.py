@@ -112,3 +112,9 @@ def frename(keys, ddict):
     return dict(
         itemmap(_keys, ddict)
     )
+
+
+@curry
+def fsplit(keys, ddict):
+    return fextract(keys, ddict), fremove(keys, ddict)
+

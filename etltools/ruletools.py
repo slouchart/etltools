@@ -2,6 +2,7 @@ import re
 from toolz import complement
 from functools import wraps, partial
 from .fieldtools import fextract
+from .streamtools import pipable
 
 
 def set_field(default):
@@ -128,4 +129,4 @@ class mapping_rule:
 
     @classmethod
     def get_apply_func(cls, rules):
-        return partial(cls.apply, rules)
+        return pipable(partial(cls.apply, rules))

@@ -2,7 +2,9 @@ from unittest import TestCase, main as run_tests
 
 
 from etltools import fextract, frename, fmap, fremove
-from etltools import flookup, freverse_lookup
+from etltools import flookup, freverse_lookup, fsplit
+
+from etltools.streamtools import pipable
 
 
 class TestFExtract(TestCase):
@@ -178,6 +180,41 @@ class TestFReverseLookUp(TestCase):
         result = freverse_lookup(self.lookup_map, keys, self.data)
         expected = {'id': 'foo', 'name': 'bar'}
         self.assertDictEqual(expected, result)
+
+
+class TestComposability(TestCase):
+    def test_1(self):
+        data = {
+            'f1': 1,
+            'f2': 'foo',
+            'spam': 42
+        }
+        transform = pipable(fextract(('f1', 'f2', ))) \
+            | pipable(frename({'f1': 'id', 'f2': 'name'}))
+
+        result = transform(data)
+        expected = {'id': 1, 'name': 'foo'}
+        self.assertDictEqual(expected, result)
+
+
+class TestFSplit(TestCase):
+    def test_1(self):
+        data = {
+            'f1': 1,
+            'f2': 'foo',
+            'spam': 42
+        }
+        result = fsplit(('f1', 'f2'), data)
+        expected = (
+            {
+                'f1': 1,
+                'f2': 'foo',
+            },
+            {
+                'spam': 42
+            }
+        )
+        self.assertTupleEqual(expected, result)
 
 
 if __name__ == '__main__':

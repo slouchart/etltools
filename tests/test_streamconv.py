@@ -94,7 +94,7 @@ class TestStreamConverter(TestCase):
         for sub_test in sub_tests:
             with self.subTest(f"converter {sub_test[0].__name__} "
                               f"-> {sub_test[1].__name__}"):
-                with self.assertRaises(TypeError):
+                with self.assertRaises(KeyError):
                     _ = stream_converter(*sub_test)
 
     def test_arg_error_cases(self):
@@ -129,6 +129,15 @@ class TestStreamConverter(TestCase):
         result = converter(42)
         expected = (42, )
         self.assertTupleEqual(expected, result)
+
+    def test_composability(self):
+        converter = stream_converter(dict, tuple) \
+                    | stream_converter(tuple, dict, key_type=int) \
+                    | stream_converter(dict, dict)
+
+        result = converter(self.sample_dict)
+        expected = {0: 0, 1: 42}
+        self.assertDictEqual(expected, result)
 
 
 if __name__ == '__main__':

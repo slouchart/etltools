@@ -15,6 +15,7 @@ from .streamtools import (
     compose,
     call_next,
     mcompose,
+    pipable,
     pipeline,
     pipe,
     call_next_starred,
@@ -28,6 +29,7 @@ from .fieldtools import (
     frename,
     freverse_lookup,
     fmap,
+    fsplit,
 )
 
 from .ruletools import (

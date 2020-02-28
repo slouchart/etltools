@@ -1,4 +1,5 @@
 from itertools import starmap, tee as replicate_, filterfalse, zip_longest
+from itertools import chain
 
 import functools
 from functools import reduce as reduce_
@@ -109,6 +110,18 @@ def mcompose(*funcs):
     )
 
 
+class pipable(object):
+    def __init__(self, callable_):
+        self._callable = callable_
+        assert callable(self._callable)
+
+    def __call__(self, *args, **kwargs):
+        return self._callable(*args, **kwargs)
+
+    def __or__(self, other):
+        return pipable(pipeline(self, other))
+
+
 def pipeline(*funcs):
     return compose_(*reversed(funcs))
 
@@ -189,6 +202,83 @@ def router(predicates, iterable, strict=False):
     )
 
 
+class split(object):
+
+    class _splitted:
+        def __init__(self, parent, index):
+            self.index = index
+            self._parent = parent
+            self._buffer = []
+            self._should_stop = False
+
+        def send(self, item):
+            self._buffer.append(item)
+
+        def throw(self, exc):
+            if exc == StopIteration:
+                self._should_stop = True
+            else:
+                raise exc
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            if not self._should_stop:
+                if len(self._buffer) == 0:
+                    self._parent.next(self)  # draw a new value
+
+                if len(self._buffer) == 0:  # nothing was sent
+                    self._should_stop = True
+
+                if len(self._buffer) > 0:  # emit the first received element
+                    return self._buffer.pop(0)
+
+            if self._should_stop:
+                raise StopIteration
+
+    def __new__(cls, func, tuples):
+        new_instance = super().__new__(cls)
+        new_instance.__init__(func, tuples)
+        return new_instance._iterators
+
+    def __init__(self, func, tuples):
+
+        self._splitter_func = func
+        self._it = iter(tuples)
+
+        assert callable(self._splitter_func)
+
+        try:
+            first = next(self._it)
+            self.nb_splitted = len(self._splitter_func(first))
+            self._it = chain([first], self._it)  # reset the main iterator
+        except StopIteration:
+            self.nb_splitted = 0
+
+        if self.nb_splitted:
+            self._iterators = tuple(
+                self._splitted(self, index)
+                for index in range(self.nb_splitted)
+            )
+        else:
+            self._iterators = tuple()
+
+    def next(self, requester):
+        try:
+            item = next(self._it)
+            splitted = self._splitter_func(item)
+
+            for index, item in enumerate(splitted):
+                if index != requester.index:
+                    self._iterators[index].send(item)
+                else:
+                    requester.send(item)
+
+        except StopIteration:
+            requester.throw(StopIteration)
+
+
 class stream_converter:
 
     _dispatcher = dict()
@@ -198,27 +288,36 @@ class stream_converter:
         key_type = kwargs.pop('key_type', None)
 
         if (from_, to_, key_type) in stream_converter._dispatcher:
-            self._method = stream_converter._dispatcher[
+            meth_factory = stream_converter._dispatcher[
                 (from_, to_, key_type)
-            ](*args, **kwargs)
-
+            ]  # a kind of goofy name isn't it?
+            self._method = meth_factory(*args, **kwargs)
+            # be insured no meth has been cooked here, only methODs :)
         else:
-            raise TypeError(f"Type association "
-                            f"'({from_.__name__}, {to_.__name__})' "
-                            f"unsupported by stream_converter")
+            raise KeyError(f"Type association "
+                           f"'({from_.__name__}, {to_.__name__})' "
+                           f"unsupported by stream_converter")
 
     def __call__(self, data):
         return self._method(data)
 
+    def __or__(self, other):  # chain converters using |
+        assert callable(other)
+        return pipable(pipeline(self, other))
+
     @classmethod
-    def dispatch(cls, t_to, t_from, t_key=None):
+    def dispatch(cls, from_, to_, key_type=None):
         def decorator(func):
             @functools.wraps(func)
-            def wrapped(*args, **kwargs):
+            def wrapper(*args, **kwargs):
                 return func(*args, **kwargs)
 
-            cls._dispatcher[(t_to, t_from, t_key)] = wrapped
-            return wrapped
+            assert (from_, to_, key_type) not in cls._dispatcher, \
+                f"A dispatch entry already exists for " \
+                f"({from_.__name__}, {to_.__name__}, " \
+                f"{key_type.__name__ if key_type is not None else str(key_type)})"
+            cls._dispatcher[(from_, to_, key_type)] = wrapper
+            return wrapper
 
         return decorator
 
@@ -230,7 +329,7 @@ def _identity():
     return toolz.identity
 
 
-@stream_converter.dispatch(tuple, dict, str)
+@stream_converter.dispatch(tuple, dict, key_type=str)
 def _convert_tuple_to_dict(keys):
     if keys and len(keys):
         return lambda d: dict(zip(keys, d))
@@ -238,7 +337,7 @@ def _convert_tuple_to_dict(keys):
         raise ValueError("Converter requires non-empty 'keys' argument")
 
 
-@stream_converter.dispatch(tuple, dict, int)
+@stream_converter.dispatch(tuple, dict, key_type=int)
 def _convert_tuple_to_dict():
     return lambda t: dict(enumerate(t))
 
