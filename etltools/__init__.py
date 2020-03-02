@@ -6,7 +6,7 @@ from .streamtools import (
     lookup,
     reduce,
     replicate,
-    router,
+    select,
     stream_converter,
     stream_generator,
 )

@@ -1,6 +1,6 @@
 import collections
 
-from itertools import starmap, tee as replicate_, filterfalse, zip_longest
+from itertools import starmap, filterfalse, zip_longest
 from itertools import chain
 
 import functools
@@ -11,6 +11,9 @@ from collections import namedtuple
 
 import toolz
 from toolz import pipe as pipe_, compose as compose_
+
+
+from ._iterators import _iterators_controller, _controlled_iterator
 
 
 def aggregate(aggregator, groupings):
@@ -48,6 +51,26 @@ def filtertruefalse(predicate, iterable):
 
 def groupby(key, iterable):
     return toolz.groupby(key, iterable)
+
+
+def join(*iterables, fill_value=None):
+    iterators = [iter(it) for it in iterables]
+    stopped_iterators = {it: False for it in iterators}
+    while True:
+        result = []
+        for it in iterators:
+            try:
+                item = next(it)
+            except StopIteration:
+                item = fill_value
+                stopped_iterators[it] = True
+
+            result.append(item)
+
+        if all(stopped_iterators.values()):
+            return
+        else:
+            yield tuple(result)
 
 
 """
@@ -118,7 +141,11 @@ class pipable(object):
         assert callable(self._callable)
 
     def __call__(self, *args, **kwargs):
-        return self._callable(*args, **kwargs)
+        result = self._callable(*args, **kwargs)
+        if callable(result):
+            return pipable(result)
+        else:
+            return result
 
     def __or__(self, other):
         return pipable(pipeline(self, other))
@@ -138,11 +165,19 @@ def reduce(function, iterable, initial=None):
     )
 
 
-def replicate(iterable, n=2):  # pragma: no cover
-    return replicate_(iterable, n)
+class replicate(_iterators_controller):
+
+    def create_controlled_iterators(self, n=2):
+        return tuple(
+            _controlled_iterator(self) for _ in range(n)
+        )
+
+    def dispatch_item(self, item, requester):
+        for it in self._iterators:
+            it.send(item)
 
 
-def router(predicates, iterable, strict=False):
+def select(predicates, iterable, strict=False):
     if predicates is None or len(predicates) == 0:
         clauses = (
             lambda x: bool(x),
@@ -190,71 +225,25 @@ def router(predicates, iterable, strict=False):
         )
         clauses = tuple(clauses) + (else_, )
 
+    iterators = replicate(
+                    iter(iterable),
+                    len(clauses)
+                )
+
     return tuple(
         starmap(
             filter,
             zip(
                 clauses,
-                replicate_(
-                    iter(iterable),
-                    len(clauses)
-                )
+                iterators
             )
         )
     )
 
 
-class _splitter:
-    """A chimera class, an iterator with the interface of a generator"""
-    def __init__(self, callback):
-        self._callback = callback
-        self._buffer = collections.deque()
-        self._should_stop = False
-        self._exception = StopIteration
+class split(_iterators_controller):
 
-    def send(self, item):
-        self._buffer.append(item)
-
-    def throw(self, exc):
-        self._should_stop = True
-        self._exception = exc
-
-    def __iter__(self):
-        return self
-
-    def __call__(self, *args, **kwargs):
-        for item in iter(self):
-            yield item
-
-    def __next__(self):
-        if not self._should_stop:
-            if len(self._buffer) == 0:
-                self._callback(self)  # draw a new value
-
-            if len(self._buffer) == 0:  # nothing was sent
-                self._should_stop = True
-
-            if len(self._buffer) > 0:  # emit the first received element
-                return self._buffer.popleft()
-
-        if self._should_stop:
-            raise self._exception
-
-
-class split(object):
-
-    def __new__(cls, func, tuples, expected_length=-1):
-        new_instance = super().__new__(cls)
-        new_instance.__init__(func, tuples, expected_length=expected_length)
-        return new_instance._iterators  # func-like class :wink:
-
-    def __init__(self, func, tuples, expected_length=-1):
-
-        self._splitter_func = func
-        self._it = iter(tuples)
-
-        assert callable(self._splitter_func)
-
+    def create_controlled_iterators(self, expected_length=-1):
         if expected_length > 0:
             nb_splitter = expected_length
         else:
@@ -266,45 +255,36 @@ class split(object):
                 nb_splitter = 0
 
         if nb_splitter:
-            self._iterators = tuple(
-                _splitter(self)
+            return tuple(
+                _controlled_iterator(self)
                 for _ in range(nb_splitter)
             )
         else:
-            self._iterators = tuple()
+            return tuple()
 
-    def __len__(self):  # pragma: no cover
-        return len(self._iterators)
+    def __init__(self, func, *args, expected_length=-1, **kwargs):
 
-    def __call__(self, requester):
+        self._splitter_func = func
+        assert callable(self._splitter_func)
+        super().__init__(*args, expected_length=expected_length, **kwargs)
+
+    def dispatch_item(self, item, requester):
         try:
-            item = next(self._it)
+            split_item = self._splitter_func(item)
+        except Exception:
+            raise RuntimeError("Exception in the splitting function")
+
+        for index, t in enumerate(split_item):
             try:
-                split_item = self._splitter_func(item)
-            except Exception:
-                raise RuntimeError("Exception in the splitting function")
-
-            for index, t in enumerate(split_item):
-                try:
-                    self._iterators[index].send(t)
-                except IndexError:
-                    raise ValueError(
-                        "Encountered a tuple with length "
-                        "exceeding the number of output "
-                        "iterators: " +
-                        f"{len(split_item)} > "
-                        f"{len(self._iterators)}"
-                    )
-
-        except StopIteration:
-            requester.throw(StopIteration)
-        except (RuntimeError, ValueError) as e:
-            self._throw_to_all(e)
-
-    def _throw_to_all(self, exc):
-        # signal all iterators
-        for it in self._iterators:
-            it.throw(exc)
+                self._iterators[index].send(t)
+            except IndexError:
+                raise ValueError(
+                    "Encountered a tuple with length "
+                    "exceeding the number of output "
+                    "iterators: " +
+                    f"{len(split_item)} > "
+                    f"{len(self._iterators)}"
+                )
 
 
 class stream_converter:

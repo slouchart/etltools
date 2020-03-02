@@ -1,7 +1,10 @@
 from unittest import TestCase, main as run_tests
 
+from toolz import curry
+
 from itertools import repeat
 from etltools import compose, mcompose, pipeline, pipe_data_through, xargs
+from etltools import pipable
 
 
 def f1(x):
@@ -73,6 +76,25 @@ class TestXArgs(TestCase):
         funcs = repeat(lambda x: 2*x, 3)
         g = xargs(tuple, funcs, as_iterable=True)
         self.assertTrue(g(1) == (2, 2, 2))
+
+
+@pipable
+@curry
+def t1(a, b):
+    return a + b
+
+
+@pipable
+@curry
+def t2(a, b):
+    return a * b
+
+
+class TestPipableCurried(TestCase):
+    def test_1(self):
+        tx = t1(2) | t2(3)
+        result = tx(1)
+        self.assertEqual(9, result)
 
 
 if __name__ == '__main__':

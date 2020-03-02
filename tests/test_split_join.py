@@ -1,7 +1,7 @@
 from unittest import TestCase, main as run_tests
 
 
-from etltools.streamtools import split
+from etltools.streamtools import split, join
 
 
 class TestSplitStream(TestCase):
@@ -78,6 +78,34 @@ class TestSplitStream(TestCase):
             ['bar']
         )
         self.assertTupleEqual(expected, result)
+
+
+class TestJoin(TestCase):
+    def setUp(self) -> None:
+        self._3elem = list(range(3))
+        self._2elem = list(range(2))
+        self._0elem = []
+
+    def test_1_same_length(self):
+        result = list(
+            join(self._3elem, self._3elem)
+        )
+        expected = list((i, i,) for i in range(3))
+        self.assertListEqual(expected, result)
+
+    def test_2_lengths_differ(self):
+        result = list(
+            join(self._3elem, self._2elem)
+        )
+        expected = list((i, i,) for i in range(2)) + [(2, None)]
+        self.assertListEqual(expected, result)
+
+    def test_3_first_iter_empty(self):
+        result = list(
+            join(self._0elem, self._2elem)
+        )
+        expected = list((None, i) for i in range(2))
+        self.assertListEqual(expected, result)
 
 
 if __name__ == '__main__':

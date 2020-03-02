@@ -1,8 +1,7 @@
-from toolz import keyfilter, itemmap, curry, compose as compose_
+from toolz import keyfilter, itemmap, compose as compose_
 from itertools import zip_longest
 
 
-@curry
 def fextract(keys, ddict):
     """
     Extracts (key, value) pairs from d if key is in keys
@@ -15,7 +14,6 @@ def fextract(keys, ddict):
     )
 
 
-@curry
 def flookup(lookup_map, keys, ddict):
     result = keyfilter(lambda k: k not in keys, ddict)
     for key in keys:
@@ -30,7 +28,6 @@ def flookup(lookup_map, keys, ddict):
     return result
 
 
-@curry
 def freverse_lookup(lookup_map, keys, ddict):
     result = keyfilter(lambda k: k not in keys, ddict)
     for key in keys:
@@ -47,7 +44,6 @@ def freverse_lookup(lookup_map, keys, ddict):
     return result
 
 
-@curry
 def fmap(keys, funcs, ddict, val_as_args=False):
     """
 
@@ -80,7 +76,6 @@ def fmap(keys, funcs, ddict, val_as_args=False):
     )
 
 
-@curry
 def fremove(keys, ddict):
     """
     Remove keys according to a list
@@ -94,7 +89,6 @@ def fremove(keys, ddict):
     )
 
 
-@curry
 def frename(keys, ddict):
     """
     Rename keys according to a mapping
@@ -114,6 +108,5 @@ def frename(keys, ddict):
     )
 
 
-@curry
 def fsplit(keys, ddict):
     return fextract(keys, ddict), fremove(keys, ddict)

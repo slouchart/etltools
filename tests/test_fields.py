@@ -1,8 +1,8 @@
 from unittest import TestCase, main as run_tests
 
 
-from etltools import fextract, frename, fmap, fremove
-from etltools import flookup, freverse_lookup, fsplit
+from etltools.fieldtools.curried import fextract, frename, fmap, fremove
+from etltools.fieldtools.curried import flookup, freverse_lookup, fsplit
 
 from etltools.streamtools import pipable
 

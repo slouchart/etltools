@@ -1,6 +1,6 @@
 from unittest import TestCase, main as run_tests
 
-from etltools import router
+from etltools import select
 
 
 class TestRouter(TestCase):
@@ -27,7 +27,7 @@ class TestRouter(TestCase):
         routes = tuple(
             map(
                 list,
-                router(self.rules[0], self.data)
+                select(self.rules[0], self.data)
             )
         )
         expected = (
@@ -39,7 +39,7 @@ class TestRouter(TestCase):
         routes = tuple(
             map(
                 list,
-                router(self.rules[1], self.data)
+                select(self.rules[1], self.data)
             )
         )
         expected = (
@@ -48,7 +48,7 @@ class TestRouter(TestCase):
         self.assertTupleEqual(routes, expected)
 
     def test_3(self):
-        routes = router(None, self.data)
+        routes = select(None, self.data)
         self.assertListEqual(list(routes[0]), self.data)
         self.assertListEqual(list(routes[1]), [])
 
@@ -56,7 +56,7 @@ class TestRouter(TestCase):
         routes = tuple(
             map(
                 list,
-                router(self.rules[0], self.data, strict=True)
+                select(self.rules[0], self.data, strict=True)
             )
         )
         expected = (
@@ -68,7 +68,7 @@ class TestRouter(TestCase):
         routes = tuple(
             map(
                 list,
-                router(self.rules[1], self.data, strict=True)
+                select(self.rules[1], self.data, strict=True)
             )
         )
         expected = (
